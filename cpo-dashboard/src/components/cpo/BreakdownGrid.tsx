@@ -12,7 +12,7 @@ const TINT: Record<string, string> = {
   Overall: "bg-slate-100/80 dark:bg-slate-800/40",
 };
 
-type Mode = "units" | "pct";
+type Mode = "units" | "pct" | "cpo";
 
 export function BreakdownGrid({
   table,
@@ -23,7 +23,7 @@ export function BreakdownGrid({
   table: BreakdownTable | undefined;
   rowHeader: string;
   note?: string;
-  /** Zone adds CPO per cell, so you can read cost by channel × brand × zone. */
+  /** Offers CPO as a third display mode (zone only). */
   showCpo?: boolean;
 }) {
   const [mode, setMode] = useState<Mode>("units");
@@ -37,13 +37,14 @@ export function BreakdownGrid({
   }
 
   const brandsFor = (col: string) => (table.brandUnavailableColumns.includes(col) ? [] : table.brands);
-  const subColsFor = (col: string) => brandsFor(col).length + 1; // brands + Total
-  const spanFor = (col: string) => subColsFor(col) * (showCpo ? 2 : 1);
+  const spanFor = (col: string) => brandsFor(col).length + 1; // brands + Total
 
-  const primary = (cell: BreakdownBrandCell, unavailable: boolean) => {
+  const render = (cell: BreakdownBrandCell, unavailable: boolean) => {
     if (unavailable) return "n/a";
     if (cell.units === 0) return "–";
-    return mode === "pct" ? formatPercent1(cell.pct) : formatNumber(cell.units);
+    if (mode === "cpo") return formatINR(cell.cpo);
+    if (mode === "pct") return formatPercent1(cell.pct);
+    return formatNumber(cell.units);
   };
 
   const toggleBtn = (m: Mode) =>
@@ -64,6 +65,11 @@ export function BreakdownGrid({
           <button onClick={() => setMode("pct")} className={toggleBtn("pct")}>
             %
           </button>
+          {showCpo && (
+            <button onClick={() => setMode("cpo")} className={toggleBtn("cpo")}>
+              CPO
+            </button>
+          )}
         </div>
       </div>
 
@@ -92,22 +98,14 @@ export function BreakdownGrid({
               {table.columns.map((col) => (
                 <Fragment key={col}>
                   {[...brandsFor(col), "Total"].map((label, i) => (
-                    <Fragment key={label}>
-                      <th
-                        className={`whitespace-nowrap px-3 py-1 text-right text-[11px] uppercase tracking-wide ${
-                          label === "Total" ? "font-semibold text-slate-700 dark:text-slate-200" : "font-medium text-slate-500"
-                        } ${i === 0 ? "border-l border-slate-200 dark:border-slate-700" : ""} ${TINT[col] ?? ""}`}
-                      >
-                        {label}
-                      </th>
-                      {showCpo && (
-                        <th
-                          className={`whitespace-nowrap px-3 py-1 text-right text-[11px] font-medium uppercase tracking-wide text-slate-400 ${TINT[col] ?? ""}`}
-                        >
-                          CPO
-                        </th>
-                      )}
-                    </Fragment>
+                    <th
+                      key={label}
+                      className={`whitespace-nowrap px-3 py-1 text-right text-[11px] uppercase tracking-wide ${
+                        label === "Total" ? "font-semibold text-slate-700 dark:text-slate-200" : "font-medium text-slate-500"
+                      } ${i === 0 ? "border-l border-slate-200 dark:border-slate-700" : ""} ${TINT[col] ?? ""}`}
+                    >
+                      {label}
+                    </th>
                   ))}
                 </Fragment>
               ))}
@@ -134,26 +132,16 @@ export function BreakdownGrid({
                   return (
                     <Fragment key={col}>
                       {entries.map(([label, c], i) => (
-                        <Fragment key={label}>
-                          <td
-                            className={`whitespace-nowrap px-3 py-1.5 text-right tabular-nums ${
-                              i === 0 ? "border-l border-slate-100 dark:border-slate-800/60" : ""
-                            } ${label === "Total" ? "font-medium text-slate-800 dark:text-slate-200" : "text-slate-700 dark:text-slate-300"} ${
-                              unavailable || c.units === 0 ? "text-slate-400" : ""
-                            }`}
-                          >
-                            {primary(c, unavailable)}
-                          </td>
-                          {showCpo && (
-                            <td
-                              className={`whitespace-nowrap px-3 py-1.5 text-right tabular-nums ${
-                                unavailable || c.units === 0 ? "text-slate-400" : "text-slate-600 dark:text-slate-400"
-                              }`}
-                            >
-                              {unavailable || c.units === 0 ? "–" : formatINR(c.cpo)}
-                            </td>
-                          )}
-                        </Fragment>
+                        <td
+                          key={label}
+                          className={`whitespace-nowrap px-3 py-1.5 text-right tabular-nums ${
+                            i === 0 ? "border-l border-slate-100 dark:border-slate-800/60" : ""
+                          } ${label === "Total" ? "font-medium text-slate-800 dark:text-slate-200" : "text-slate-700 dark:text-slate-300"} ${
+                            unavailable || c.units === 0 ? "text-slate-400" : ""
+                          }`}
+                        >
+                          {render(c, unavailable)}
+                        </td>
                       ))}
                     </Fragment>
                   );
