@@ -625,7 +625,9 @@ export function buildHeadline(
   months: string[]
 ): HeadlineSummary[] {
   return months.map((monthKey) => {
-    const blocks = movementBlocks.filter((b) => b.monthKey === monthKey);
+    // Overall only — movementBlocks also holds a set per brand, and Overall
+    // already contains them, so summing everything double counts.
+    const blocks = movementBlocks.filter((b) => b.monthKey === monthKey && b.brand === ALL_BRANDS);
     const amazon = blocks.find((b) => b.block === "Amazon");
     const myntra = blocks.find((b) => b.block === "Myntra");
 
