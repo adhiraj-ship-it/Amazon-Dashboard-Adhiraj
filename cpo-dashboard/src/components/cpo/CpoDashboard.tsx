@@ -14,6 +14,7 @@ import { HeadlineStrip } from "./HeadlineStrip";
 import { MovementBlocksTable } from "./MovementBlocksTable";
 import { UtilisationGrid } from "./UtilisationGrid";
 import { OverridePanel } from "./OverridePanel";
+import { ThemeToggle } from "./ThemeToggle";
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 const ECOM_BLOCKS: BlockKey[] = ["Amazon", "Myntra"];
@@ -112,6 +113,8 @@ export function CpoDashboard() {
               </p>
             )}
           </div>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
           <button
             onClick={load}
             disabled={loading}
@@ -119,6 +122,7 @@ export function CpoDashboard() {
           >
             {loading ? "Refreshing…" : "Refresh"}
           </button>
+          </div>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-4">

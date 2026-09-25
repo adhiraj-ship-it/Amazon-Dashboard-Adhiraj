@@ -1,8 +1,19 @@
 @import "tailwindcss";
 
+/* Drive Tailwind's dark: utilities off an explicit attribute rather than the
+   OS query, so the toggle can override the system setting. An inline script in
+   the layout resolves "system" to light/dark before first paint, so this
+   attribute is always present and there's no flash of the wrong theme. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+}
+
+[data-theme="dark"] {
+  --background: #0b1220;
+  --foreground: #e8eaed;
 }
 
 @theme inline {
@@ -10,10 +21,11 @@
   --color-foreground: var(--foreground);
 }
 
+/* Fallback for the brief moment before the script runs, or if JS is disabled. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root:not([data-theme]) {
+    --background: #0b1220;
+    --foreground: #e8eaed;
   }
 }
 
