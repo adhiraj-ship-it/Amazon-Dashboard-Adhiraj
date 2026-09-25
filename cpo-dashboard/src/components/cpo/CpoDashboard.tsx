@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ALL_BRANDS } from "@/lib/cpo/aggregate";
 import { CPO_ACCENT } from "@/lib/cpo/accent";
@@ -102,16 +103,31 @@ export function CpoDashboard() {
     <div className="mx-auto max-w-[110rem] px-4 py-6 sm:px-6 lg:px-8">
       <header className="mb-5 border-b border-slate-200 pb-4 dark:border-slate-800">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="flex items-center gap-2 text-2xl font-semibold text-slate-900 dark:text-slate-50">
-              <span aria-hidden="true">🚚</span>
-              Logistics CPO Tracker - ECom
-            </h1>
-            {data && (
-              <p className="mt-1 text-xs text-slate-500">
-                Invoice date {data.cutoverDate} onwards · Updated {new Date(data.fetchedAt).toLocaleTimeString()}
-              </p>
-            )}
+          <div className="flex items-center gap-3">
+            {/* The logo file has an opaque white background, so it sits on a
+                white chip — that keeps the brand colours exact in dark mode
+                instead of recolouring or inverting the mark. */}
+            <span className="shrink-0 rounded-md bg-white px-2 py-1.5 ring-1 ring-slate-200 dark:ring-slate-700">
+              <Image
+                src="/esc-plan-logo.png"
+                alt="ESC Plan"
+                width={178}
+                height={114}
+                priority
+                className="h-8 w-auto"
+              />
+            </span>
+            <div>
+              <h1 className="flex items-center gap-2 text-2xl font-semibold text-slate-900 dark:text-slate-50">
+                <span aria-hidden="true">🚚</span>
+                Logistics CPO Tracker - ECom
+              </h1>
+              {data && (
+                <p className="mt-1 text-xs text-slate-500">
+                  Invoice date {data.cutoverDate} onwards · Updated {new Date(data.fetchedAt).toLocaleTimeString()}
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />

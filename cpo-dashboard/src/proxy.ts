@@ -62,7 +62,11 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Everything except Next's own static assets and the favicon — notably this
-  // DOES cover /api/cpo, which is where the actual cost figures are served.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Everything except Next's own static assets, the favicon and the company
+  // logo — notably this DOES cover /api/cpo, where the cost figures are served.
+  //
+  // Public assets are named individually rather than excluded by extension:
+  // the default stays "protected", so adding a file can't accidentally widen
+  // what's readable without a password.
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|esc-plan-logo.png).*)"],
 };
