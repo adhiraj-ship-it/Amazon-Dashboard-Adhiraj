@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+/* Aptos Narrow ships with Microsoft 365 / Windows 11, so it resolves locally
+   on the machines this dashboard is used from; the fallbacks keep the same
+   condensed feel anywhere it doesn't. */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Aptos Narrow", "Aptos", "Arial Narrow", "Helvetica Neue Condensed", Arial, sans-serif;
+}

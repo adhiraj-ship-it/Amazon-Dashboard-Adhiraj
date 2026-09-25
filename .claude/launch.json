@@ -9,6 +9,15 @@
         "set PATH=C:\\Program Files\\nodejs;%PATH% && npm --prefix dashboard run dev"
       ],
       "port": 3000
+    },
+    {
+      "name": "cpo-dashboard",
+      "runtimeExecutable": "cmd.exe",
+      "runtimeArgs": [
+        "/c",
+        "set PATH=C:\\Program Files\\nodejs;%PATH% && npm --prefix cpo-dashboard run dev -- -p 3001"
+      ],
+      "port": 3001
     }
   ]
 }
