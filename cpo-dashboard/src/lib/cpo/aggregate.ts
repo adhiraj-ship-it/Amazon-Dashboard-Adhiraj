@@ -4,10 +4,8 @@ import { deriveBrandFromSku, normalizeSizeBand } from "./parse";
 import type {
   BlockKey,
   BrandMonthSummary,
+  BrandChannelSummary,
   BrandSizeBandSummary,
-  BreakdownCell,
-  BreakdownRow,
-  BreakdownTable,
   ChannelMonthSummary,
   CostBreakdown,
   DataQuality,
@@ -20,6 +18,7 @@ import type {
   MovementBlock,
   MovementLane,
   MovementLaneRow,
+  SizeBandSummary,
   WorkingRcaRow,
 } from "./types";
 
@@ -450,6 +449,7 @@ function laneOf(l: LineItem): MovementLane | null {
 }
 
 const BLOCKS: BlockKey[] = ["Amazon", "Myntra", "Global"];
+export const ALL_BRANDS = "Overall";
 
 function emptyLane(label: string): MovementLaneRow {
   return {
@@ -487,13 +487,15 @@ export function buildMovementBlocks(
   lineItems: LineItem[],
   globalPool: GlobalPoolMonthSummary[],
   months: string[],
-  overrides: Overrides = EMPTY_OVERRIDES
+  overrides: Overrides = EMPTY_OVERRIDES,
+  brand: string = ALL_BRANDS
 ): MovementBlock[] {
   const out: MovementBlock[] = [];
 
   for (const monthKey of months) {
     for (const block of BLOCKS) {
       if (block === "Global") {
+        if (brand !== ALL_BRANDS) continue; // pool movement has no brand to filter on
         const pool = globalPool.find((p) => p.monthKey === monthKey);
         const fToWh = emptyLane("F to WH");
         const whToWh = emptyLane("WH to WH");
@@ -520,9 +522,12 @@ export function buildMovementBlocks(
         out.push({
           block,
           monthKey,
+          brand,
           lanes,
           total,
           adjustmentFactor: 0,
+          invoiceValue: 0,
+          costPctOfInvoiceValue: 0,
           unitsMoved,
           cpo: unitsMoved > 0 ? total.totalCost / unitsMoved : 0,
         });
@@ -537,8 +542,10 @@ export function buildMovementBlocks(
       const dispatchSets = { direct: new Set<string>(), warehouse: new Set<string>(), intra: new Set<string>() };
       let unitsMoved = 0;
 
+      let invoiceValue = 0;
       for (const l of channelLines(lineItems)) {
         if (l.channel !== block || l.monthKey !== monthKey) continue;
+        if (brand !== ALL_BRANDS && l.brand !== brand) continue;
         const laneKey = laneOf(l);
         if (!laneKey) continue;
         const lane = laneKey === "direct" ? direct : laneKey === "warehouse" ? warehouse : intra;
@@ -549,6 +556,7 @@ export function buildMovementBlocks(
           l.lastMileDetentionLoading + l.lastMileDetentionUnloading + l.lastMileUnloading + l.lastMileReturn;
         lane.firstMileAllocation += l.firstMileAllocation;
         unitsMoved += l.finalQty;
+        invoiceValue += l.invoiceValue;
       }
       direct.dispatches = dispatchSets.direct.size;
       warehouse.dispatches = dispatchSets.warehouse.size;
@@ -568,186 +576,18 @@ export function buildMovementBlocks(
       out.push({
         block,
         monthKey,
+        brand,
         lanes,
         total,
         adjustmentFactor,
+        invoiceValue,
+        costPctOfInvoiceValue: invoiceValue > 0 ? total.totalCost / invoiceValue : 0,
         unitsMoved,
         cpo: unitsMoved > 0 ? total.totalCost / unitsMoved : 0,
       });
     }
   }
   return out;
-}
-
-const ZONE_ROWS = ["North", "South", "East", "West", "Intra"];
-const SIZE_ORDER = ["Cabin", "Medium", "2Pc Set", "Large", "3Pc Set"];
-
-/** Intra legs never leave the premises, so they have no zone. */
-function resolveZone(rawZone: string, isIntra: boolean): string {
-  if (isIntra) return "Intra";
-  const z = rawZone.trim().toLowerCase();
-  if (z.startsWith("north")) return "North";
-  if (z.startsWith("south")) return "South";
-  if (z.startsWith("east")) return "East";
-  if (z.startsWith("west")) return "West";
-  return "Unknown";
-}
-
-const TRUCK_ROWS = ["32ft", "20ft", "14ft", "10ft", "8ft"];
-const TRUCK_UNSPECIFIED = "Unspecified / intra";
-
-/** Only the real truck sizes count — blanks and "Others" (intra, no truck) are excluded from both numerator and denominator. */
-function resolveTruck(rawVehicleType: string): string | null {
-  const v = rawVehicleType.trim().toLowerCase().replace(/\s+/g, "");
-  for (const t of TRUCK_ROWS) {
-    const n = t.replace("ft", "");
-    if (v === t || v === `${n}ft.` || v === n) return t;
-  }
-  return null;
-}
-
-function emptyCells(): Record<BlockKey, BreakdownCell> {
-  return {
-    Amazon: { byBrand: {}, units: 0, pct: 0 },
-    Myntra: { byBrand: {}, units: 0, pct: 0 },
-    Global: { byBrand: {}, units: 0, pct: 0 },
-  };
-}
-
-/** Brand sub-columns, ordered by how much they actually moved that month. */
-function brandsForMonth(lineItems: LineItem[], monthKey: string): string[] {
-  const totals = new Map<string, number>();
-  for (const l of channelLines(lineItems)) {
-    if (l.monthKey !== monthKey) continue;
-    if (l.channel !== 'Amazon' && l.channel !== 'Myntra') continue;
-    totals.set(l.brand, (totals.get(l.brand) ?? 0) + l.finalQty);
-  }
-  return [...totals.entries()].sort((x, y) => y[1] - x[1]).map(([brand]) => brand);
-}
-
-/**
- * `alwaysShow` rows render even when empty, so a breakdown keeps a stable
- * shape month to month (an absent 14ft truck row means "none this month",
- * not "we stopped tracking it"). Anything else only appears when it has data.
- */
-function finishBreakdown(
-  monthKey: string,
-  alwaysShow: string[],
-  tally: Map<string, Record<BlockKey, BreakdownCell>>,
-  brands: string[],
-  unavailableBlocks: BlockKey[],
-  brandUnavailableBlocks: BlockKey[],
-  /** Rows that count toward the Share denominator. Defaults to every row. */
-  shareBasisLabels?: string[]
-): BreakdownTable {
-  const totals: Record<BlockKey, number> = { Amazon: 0, Myntra: 0, Global: 0 };
-  for (const [label, cells] of tally.entries()) {
-    if (shareBasisLabels && !shareBasisLabels.includes(label)) continue;
-    for (const b of BLOCKS) totals[b] += cells[b].units;
-  }
-  const extras = [...tally.keys()].filter((label) => !alwaysShow.includes(label));
-  const rows: BreakdownRow[] = [...alwaysShow, ...extras].map((label) => {
-    const cells = tally.get(label) ?? emptyCells();
-    const inShareBasis = !shareBasisLabels || shareBasisLabels.includes(label);
-    for (const b of BLOCKS) {
-      cells[b].pct = inShareBasis && totals[b] > 0 ? cells[b].units / totals[b] : 0;
-    }
-    return { label, cells };
-  });
-  return { monthKey, brands, rows, unavailableBlocks, brandUnavailableBlocks };
-}
-
-/** Pool dispatches carry Style but never a brand, so Global gets a total with no brand split. */
-const GLOBAL_HAS_NO_BRAND: BlockKey[] = ['Global'];
-
-export function buildZoneBreakdown(
-  lineItems: LineItem[],
-  globalPool: GlobalPoolMonthSummary[],
-  months: string[]
-): BreakdownTable[] {
-  return months.map((monthKey) => {
-    const tally = new Map<string, Record<BlockKey, BreakdownCell>>();
-    const bump = (label: string, block: BlockKey, units: number, brand?: string) => {
-      const cells = tally.get(label) ?? emptyCells();
-      cells[block].units += units;
-      if (brand) cells[block].byBrand[brand] = (cells[block].byBrand[brand] ?? 0) + units;
-      tally.set(label, cells);
-    };
-
-    for (const l of channelLines(lineItems)) {
-      if (l.monthKey !== monthKey) continue;
-      if (l.channel !== 'Amazon' && l.channel !== 'Myntra') continue;
-      // Same intra rule the movement table uses, so the two never disagree.
-      bump(resolveZone(l.rcaZone, l.isIntra), l.channel as BlockKey, l.finalQty, l.brand);
-    }
-    const pool = globalPool.find((p) => p.monthKey === monthKey);
-    for (const d of pool?.dispatches ?? []) {
-      // Same 4-condition test as the channel side. Freight alone would file a
-      // Factory dispatch with a blank freight cell under "Intra" and throw its
-      // real zone away.
-      bump(resolveZone(d.zone, isIntraShape(d.source, d.vehicleType, d.movementType, d.freightCost)), 'Global', d.netSupplied);
-    }
-    return finishBreakdown(monthKey, ZONE_ROWS, tally, brandsForMonth(lineItems, monthKey), [], GLOBAL_HAS_NO_BRAND);
-  });
-}
-
-export function buildSizeBreakdown(lineItems: LineItem[], months: string[]): BreakdownTable[] {
-  return months.map((monthKey) => {
-    const tally = new Map<string, Record<BlockKey, BreakdownCell>>();
-    const labels: string[] = [];
-    for (const l of channelLines(lineItems)) {
-      if (l.monthKey !== monthKey) continue;
-      if (l.channel !== 'Amazon' && l.channel !== 'Myntra') continue;
-      const cells = tally.get(l.sizeBand) ?? emptyCells();
-      cells[l.channel as BlockKey].units += l.finalQty;
-      cells[l.channel as BlockKey].byBrand[l.brand] = (cells[l.channel as BlockKey].byBrand[l.brand] ?? 0) + l.finalQty;
-      if (!tally.has(l.sizeBand)) labels.push(l.sizeBand);
-      tally.set(l.sizeBand, cells);
-    }
-    const ordered = [...SIZE_ORDER, ...labels.filter((l) => !SIZE_ORDER.includes(l))];
-    // Working RCA records only Style for pool dispatches, never Size, so the
-    // Global column genuinely has no size data to report.
-    return finishBreakdown(monthKey, ordered, tally, brandsForMonth(lineItems, monthKey), ['Global'], GLOBAL_HAS_NO_BRAND);
-  });
-}
-
-export function buildTruckBreakdown(
-  lineItems: LineItem[],
-  globalPool: GlobalPoolMonthSummary[],
-  months: string[]
-): BreakdownTable[] {
-  return months.map((monthKey) => {
-    const tally = new Map<string, Record<BlockKey, BreakdownCell>>();
-    const bump = (label: string, block: BlockKey, units: number, brand?: string) => {
-      const cells = tally.get(label) ?? emptyCells();
-      cells[block].units += units;
-      if (brand) cells[block].byBrand[brand] = (cells[block].byBrand[brand] ?? 0) + units;
-      tally.set(label, cells);
-    };
-
-    // Units on a vehicle that isn't one of the five truck sizes still moved and
-    // still cost money, so they get an "Unspecified" row rather than being
-    // dropped — otherwise this table's Amazon total silently disagrees with the
-    // Zone and Size tables beside it. They stay out of the Share denominator.
-    for (const l of channelLines(lineItems)) {
-      if (l.monthKey !== monthKey) continue;
-      if (l.channel !== 'Amazon' && l.channel !== 'Myntra') continue;
-      bump(resolveTruck(l.rcaVehicleType) ?? TRUCK_UNSPECIFIED, l.channel as BlockKey, l.finalQty, l.brand);
-    }
-    const pool = globalPool.find((p) => p.monthKey === monthKey);
-    for (const d of pool?.dispatches ?? []) {
-      bump(resolveTruck(d.vehicleType) ?? TRUCK_UNSPECIFIED, 'Global', d.netSupplied);
-    }
-    return finishBreakdown(
-      monthKey,
-      [...TRUCK_ROWS, TRUCK_UNSPECIFIED],
-      tally,
-      brandsForMonth(lineItems, monthKey),
-      [],
-      GLOBAL_HAS_NO_BRAND,
-      TRUCK_ROWS
-    );
-  });
 }
 
 export function buildBrandSizeBand(lineItems: LineItem[]): BrandSizeBandSummary[] {
@@ -814,4 +654,56 @@ export function buildHeadline(
       costPctOfInvoiceValue: invoiceValue > 0 ? channelCost / invoiceValue : 0,
     };
   });
+}
+
+/** Brand CPO scoped to each channel, with a size drill-down under each brand. */
+export function buildBrandChannel(lineItems: LineItem[]): BrandChannelSummary[] {
+  const groups = new Map<string, LineItem[]>();
+  for (const l of channelLines(lineItems)) {
+    if (l.channel !== "Amazon" && l.channel !== "Myntra") continue;
+    const key = `${l.channel}__${l.monthKey}__${l.brand}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(l);
+  }
+
+  const out: BrandChannelSummary[] = [];
+  for (const [key, lines] of groups) {
+    const [channel, monthKey, brand] = key.split("__");
+    const cost = emptyCost();
+    let unitsSold = 0;
+    const bySize = new Map<string, LineItem[]>();
+    for (const l of lines) {
+      unitsSold += l.finalQty;
+      addCost(cost, {
+        freight: l.lastMileFreight,
+        detentionLoading: l.lastMileDetentionLoading,
+        detentionUnloading: l.lastMileDetentionUnloading,
+        unloading: l.lastMileUnloading,
+        returnCharges: l.lastMileReturn,
+        firstMileAllocation: l.firstMileAllocation,
+      });
+      (bySize.get(l.sizeBand) ?? bySize.set(l.sizeBand, []).get(l.sizeBand)!).push(l);
+    }
+
+    const sizes: SizeBandSummary[] = [];
+    for (const [sizeBand, sizeLines] of bySize) {
+      const sizeCost = emptyCost();
+      let sizeUnits = 0;
+      for (const l of sizeLines) {
+        sizeUnits += l.finalQty;
+        addCost(sizeCost, {
+          freight: l.lastMileFreight,
+          detentionLoading: l.lastMileDetentionLoading,
+          detentionUnloading: l.lastMileDetentionUnloading,
+          unloading: l.lastMileUnloading,
+          returnCharges: l.lastMileReturn,
+          firstMileAllocation: l.firstMileAllocation,
+        });
+      }
+      sizes.push({ sizeBand, unitsSold: sizeUnits, cost: sizeCost, cpo: sizeUnits > 0 ? sizeCost.total / sizeUnits : 0 });
+    }
+    sizes.sort((a, b) => b.unitsSold - a.unitsSold);
+
+    out.push({ channel, monthKey, brand, unitsSold, cost, cpo: unitsSold > 0 ? cost.total / unitsSold : 0, sizes });
+  }
+  return out.sort((a, b) => a.channel.localeCompare(b.channel) || b.unitsSold - a.unitsSold);
 }

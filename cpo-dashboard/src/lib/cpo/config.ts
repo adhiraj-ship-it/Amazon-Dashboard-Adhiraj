@@ -18,6 +18,21 @@ export const CPO_TABS = {
  */
 export const OVERRIDES_TAB_NAME = "CPO Overrides";
 
+/**
+ * Usable volume per truck, from the VEHICLE tab of the reference workbook.
+ * Same volume units as Master Tracker's Prod Vol, so goods volume divides
+ * straight into capacity. 8ft isn't in that sheet — left out rather than
+ * guessed, so its utilisation reads "no capacity on file" instead of a
+ * plausible-looking wrong number.
+ */
+export const TRUCK_CAPACITY: Record<string, number> = {
+  "32ft": 2432,
+  "24ft": 1632,
+  "20ft": 1360,
+  "14ft": 896,
+  "10ft": 600,
+};
+
 // Only Invoice dates on/after this are in scope, per Adhiraj (2026-09-23):
 // ignore all pre-Sept'26 history, this tracker starts fresh from here.
 export const CUTOVER_DATE = "2026-09-01";

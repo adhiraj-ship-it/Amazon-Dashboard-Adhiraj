@@ -170,33 +170,74 @@ export interface MovementLaneRow {
 export interface MovementBlock {
   block: BlockKey;
   monthKey: string;
+  brand: string; // "Overall", or a single brand when the table is filtered
   lanes: MovementLaneRow[]; // movement tags, excluding the Total column
   total: MovementLaneRow; // the "Total" column
   adjustmentFactor: number; // the factor applied, 0 when none is set
+  invoiceValue: number; // value of the goods behind this block's units
+  costPctOfInvoiceValue: number;
   unitsMoved: number; // block level only
   cpo: number; // total.totalCost / unitsMoved
 }
 
-export interface BreakdownCell {
-  byBrand: Record<string, number>; // brand -> units
-  units: number; // block total for this row
-  pct: number; // share of the block's column total
+export interface BreakdownBrandCell {
+  units: number;
+  cost: number;
+  pct: number; // share of this column (or of the share-basis subset)
+  cpo: number;
 }
 
-/** One row of a diagnostic breakdown (zone / size / truck size), split by brand within each block. */
+export interface BreakdownCell extends BreakdownBrandCell {
+  byBrand: Record<string, BreakdownBrandCell>;
+}
+
+/** One row of a diagnostic breakdown (zone / size / truck), split by brand within each column. */
 export interface BreakdownRow {
   label: string;
-  cells: Record<BlockKey, BreakdownCell>;
+  cells: Record<string, BreakdownCell>;
+  isTotal?: boolean;
 }
 
 export interface BreakdownTable {
   monthKey: string;
-  brands: string[]; // brand sub-columns, ordered by volume
+  columns: string[]; // e.g. [Amazon,Myntra,Overall] or [Global]
+  brands: string[];
   rows: BreakdownRow[];
-  /** Blocks with no usable source data for this breakdown (e.g. size isn't tracked per pool dispatch). */
-  unavailableBlocks: BlockKey[];
-  /** Blocks that have totals but can't be split by brand (pool dispatches carry Style, never a brand). */
-  brandUnavailableBlocks: BlockKey[];
+  /** Columns with totals but no brand split (pool dispatches carry Style, never a brand). */
+  brandUnavailableColumns: string[];
+  /** Columns with no usable source data at all (Size isn't tracked per pool dispatch). */
+  unavailableColumns: string[];
+}
+
+export interface UtilisationCell {
+  volume: number;
+  capacity: number;
+  dispatches: number;
+  pct: number;
+  capacityKnown: boolean;
+}
+
+export interface UtilisationRow {
+  truck: string;
+  capacityPerTruck: number;
+  cells: Record<string, UtilisationCell>;
+}
+
+export interface UtilisationTable {
+  monthKey: string;
+  columns: string[];
+  rows: UtilisationRow[];
+}
+
+/** Brand CPO scoped to one channel, with its size drill-down. */
+export interface BrandChannelSummary {
+  channel: string;
+  monthKey: string;
+  brand: string;
+  unitsSold: number;
+  cost: CostBreakdown;
+  cpo: number;
+  sizes: SizeBandSummary[];
 }
 
 export interface BrandSizeBandSummary extends SizeBandSummary {
@@ -240,7 +281,9 @@ export interface CpoDashboardData {
   months: string[]; // sorted ascending, e.g. ["2026-09", "2026-10"]
   channelMonthly: ChannelMonthSummary[];
   brandMonthly: BrandMonthSummary[];
+  brandChannel: BrandChannelSummary[];
   brandSizeBand: BrandSizeBandSummary[];
+  brandsByMonth: Record<string, string[]>; // month -> brands, for the movement filter
   globalPool: GlobalPoolMonthSummary[];
   headline: HeadlineSummary[];
   firstMileRates: FirstMileRateSource[];
@@ -250,8 +293,16 @@ export interface CpoDashboardData {
   overridesTabName: string;
   sheetUrl: string;
   movementBlocks: MovementBlock[];
-  zoneBreakdown: BreakdownTable[];
-  sizeBreakdown: BreakdownTable[];
-  truckBreakdown: BreakdownTable[];
+  ecom: {
+    zone: BreakdownTable[];
+    size: BreakdownTable[];
+    truck: BreakdownTable[];
+    utilisation: UtilisationTable[];
+  };
+  global: {
+    zone: BreakdownTable[];
+    truck: BreakdownTable[];
+    utilisation: UtilisationTable[];
+  };
   dataQuality: DataQuality;
 }

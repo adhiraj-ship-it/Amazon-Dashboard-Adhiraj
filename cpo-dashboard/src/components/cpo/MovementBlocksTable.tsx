@@ -1,4 +1,4 @@
-import { formatINR, formatNumber } from "@/lib/cpo/format";
+import { formatINR, formatNumber, formatPercent1 } from "@/lib/cpo/format";
 import type { BlockKey, MovementBlock, MovementLaneRow } from "@/lib/cpo/types";
 import { ChannelLogo } from "./ChannelLogo";
 
@@ -118,6 +118,24 @@ export function MovementBlocksTable({ blocks, only }: { blocks: MovementBlock[];
                 }`}
               >
                 {lane.label === "Total" ? formatINR(block.cpo) : "–"}
+              </td>
+            ))}
+          </tr>
+
+          <tr className="border-t border-slate-100 dark:border-slate-800/60">
+            <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-3 py-1.5 text-slate-700 dark:bg-slate-900 dark:text-slate-300">
+              Cost % of Invoice Value
+            </td>
+            {columns.map(({ block, lane }, i) => (
+              <td
+                key={`${block.block}-pct-${i}`}
+                className={`whitespace-nowrap px-3 py-1.5 text-right tabular-nums ${
+                  lane.label === "Total"
+                    ? "border-r border-slate-200 font-medium text-slate-800 dark:border-slate-700 dark:text-slate-200"
+                    : "text-slate-400"
+                }`}
+              >
+                {lane.label !== "Total" ? "–" : block.invoiceValue > 0 ? formatPercent1(block.costPctOfInvoiceValue) : "–"}
               </td>
             ))}
           </tr>

@@ -1,16 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ALL_BRANDS } from "@/lib/cpo/aggregate";
 import { CPO_ACCENT } from "@/lib/cpo/accent";
 import { formatMonth } from "@/lib/cpo/format";
 import type { BlockKey, CpoDashboardData } from "@/lib/cpo/types";
-import { BrandTable } from "./BrandTable";
+import { BrandByChannel } from "./BrandByChannel";
 import { BreakdownGrid } from "./BreakdownGrid";
 import { CpoRecap } from "./CpoRecap";
 import { DataQualityPanel } from "./DataQualityPanel";
 import { GlobalPoolPanel } from "./GlobalPoolPanel";
 import { HeadlineStrip } from "./HeadlineStrip";
 import { MovementBlocksTable } from "./MovementBlocksTable";
+import { UtilisationGrid } from "./UtilisationGrid";
 import { OverridePanel } from "./OverridePanel";
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
@@ -37,6 +39,7 @@ export function CpoDashboard() {
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("ecom");
+  const [brand, setBrand] = useState<string>(ALL_BRANDS);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -66,15 +69,24 @@ export function CpoDashboard() {
     if (!data || !month) return null;
     return {
       headline: data.headline.find((h) => h.monthKey === month),
-      blocks: data.movementBlocks.filter((b) => b.monthKey === month),
-      zone: data.zoneBreakdown.find((z) => z.monthKey === month),
-      size: data.sizeBreakdown.find((s) => s.monthKey === month),
-      truck: data.truckBreakdown.find((t) => t.monthKey === month),
-      brands: data.brandMonthly.filter((b) => b.monthKey === month),
-      brandSizes: data.brandSizeBand.filter((b) => b.monthKey === month),
+      blocks: data.movementBlocks.filter((b) => b.monthKey === month && b.brand === brand),
+      globalBlocks: data.movementBlocks.filter((b) => b.monthKey === month && b.brand === ALL_BRANDS),
+      brandChannel: data.brandChannel.filter((b) => b.monthKey === month),
       pool: data.globalPool.filter((p) => p.monthKey === month),
+      brands: data.brandsByMonth[month] ?? [],
+      ecom: {
+        zone: data.ecom.zone.find((t) => t.monthKey === month),
+        size: data.ecom.size.find((t) => t.monthKey === month),
+        truck: data.ecom.truck.find((t) => t.monthKey === month),
+        utilisation: data.ecom.utilisation.find((t) => t.monthKey === month),
+      },
+      global: {
+        zone: data.global.zone.find((t) => t.monthKey === month),
+        truck: data.global.truck.find((t) => t.monthKey === month),
+        utilisation: data.global.utilisation.find((t) => t.monthKey === month),
+      },
     };
-  }, [data, month]);
+  }, [data, month, brand]);
 
   const hasGlobalPoolRate = Boolean(data && data.globalPool.some((p) => p.rate > 0));
 
@@ -159,7 +171,30 @@ export function CpoDashboard() {
             <SectionHeading hint="Cost against the dispatches in each lane, the first-mile pool allocated onto warehouse-routed units, and the resulting CPO.">
               Movements
             </SectionHeading>
+            <div className="mb-3 flex items-center gap-2">
+              <label htmlFor="brand-filter" className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Brand
+              </label>
+              <select
+                id="brand-filter"
+                value={brand}
+                onChange={(e) => setBrand(e.target.value)}
+                className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm font-medium text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              >
+                <option value={ALL_BRANDS}>{ALL_BRANDS}</option>
+                {view.brands.map((b) => (
+                  <option key={b} value={b}>
+                    {b}
+                  </option>
+                ))}
+              </select>
+            </div>
             <MovementBlocksTable blocks={view.blocks} only={ECOM_BLOCKS} />
+          </section>
+
+          <section>
+            <SectionHeading hint="Click a brand to see its CPO by size.">CPO by Brand</SectionHeading>
+            <BrandByChannel rows={view.brandChannel} />
           </section>
 
           <section className="space-y-6">
@@ -169,32 +204,37 @@ export function CpoDashboard() {
 
             <div>
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Zone</h3>
-              <BreakdownGrid table={view.zone} rowHeader="Zone" note="Intra rows never leave the premises, so they carry no freight." />
+              <BreakdownGrid
+                table={view.ecom.zone}
+                rowHeader="Zone"
+                showCpo
+                note="Intra rows never leave the premises, so they carry no freight."
+              />
             </div>
 
             <div>
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Size Moved</h3>
-              <BreakdownGrid table={view.size} rowHeader="Size" />
+              <BreakdownGrid table={view.ecom.size} rowHeader="Size" />
             </div>
 
             <div>
               <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Truck Size</h3>
               <BreakdownGrid
-                table={view.truck}
+                table={view.ecom.truck}
                 rowHeader="Truck"
-                note="Shares are of trucked units only — the Unspecified / intra row is counted in the totals but kept out of the ratio."
+                note="Percentages are of trucked units only — the Unspecified / intra row is counted in the totals but kept out of the ratio."
               />
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Truck Utilisation</h3>
+              <UtilisationGrid table={view.ecom.utilisation} />
             </div>
           </section>
 
           <section>
             <SectionHeading>Overall CPO</SectionHeading>
             <CpoRecap blocks={view.blocks} only={ECOM_BLOCKS} />
-          </section>
-
-          <section>
-            <SectionHeading hint="Click a brand to see its CPO by size.">By Brand</SectionHeading>
-            <BrandTable rows={view.brands} sizeBand={view.brandSizes} />
           </section>
 
           <section>
@@ -209,12 +249,35 @@ export function CpoDashboard() {
             <SectionHeading hint="Factory→Warehouse and Warehouse→Warehouse movement — the shared pool that gets allocated onto channel units.">
               Global Movements
             </SectionHeading>
-            <MovementBlocksTable blocks={view.blocks} only={GLOBAL_BLOCKS} />
+            <MovementBlocksTable blocks={view.globalBlocks} only={GLOBAL_BLOCKS} />
           </section>
 
           <section>
             <SectionHeading>Pool CPO</SectionHeading>
-            <CpoRecap blocks={view.blocks} only={GLOBAL_BLOCKS} />
+            <CpoRecap blocks={view.globalBlocks} only={GLOBAL_BLOCKS} />
+          </section>
+
+          <section className="space-y-6">
+            <SectionHeading hint="Where the pool moved and how full those trucks ran.">Global Cost Drivers</SectionHeading>
+
+            <div>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Zone</h3>
+              <BreakdownGrid table={view.global.zone} rowHeader="Zone" showCpo />
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Truck Size</h3>
+              <BreakdownGrid
+                table={view.global.truck}
+                rowHeader="Truck"
+                note="Percentages are of trucked units only."
+              />
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Truck Utilisation</h3>
+              <UtilisationGrid table={view.global.utilisation} />
+            </div>
           </section>
 
           <section>
